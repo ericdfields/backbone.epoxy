@@ -58,21 +58,31 @@
 			return sup.prototype[ method ].apply(instance, args);
 		};
 	}
+
+	Epoxy.utils = {
+	  model: {
+	    modelMap: [],
+	    modelSuper: superClass(Backbone.Model),
+	    modelProps: ['computeds']
+	  },
+	  view: {
+	    viewMap: [],
+	    viewSuper: superClass(Backbone.View),
+	    viewProps: ['viewModel', 'bindings', 'bindingFilters', 'bindingHandlers', 'bindingSources', 'computeds']
+	  }
+	}
 	
 	
 	// Epoxy.Model
 	// -----------
-	var modelMap;
-	var modelSuper = superClass(Backbone.Model);
-	var modelProps = ['computeds'];
 	
 	Epoxy.Model = Backbone.Model.extend({
 		
 		// Backbone.Model constructor override:
 		// configures computed model attributes around the underlying native Backbone model.
 		constructor: function(attributes, options) {
-			_.extend(this, _.pick(options||{}, modelProps));
-			modelSuper(this, 'constructor', arguments);
+			_.extend(this, _.pick(options||{}, Epoxy.utils.model.modelProps));
+			Epoxy.utils.model.modelSuper(this, 'constructor', arguments);
 			this.initComputeds();
 		},
 		
@@ -89,7 +99,7 @@
 		get: function(attribute) {
 			
 			// Automatically register bindings while building out computed dependency graphs:
-			modelMap && modelMap.push(['change:'+attribute, this]);
+			Epoxy.utils.model.modelMap && Epoxy.utils.model.modelMap.push(['change:'+attribute, this]);
 			
 			// Return a computed property value, if available:
 			if (this.hasComputed(attribute)) {
@@ -97,7 +107,7 @@
 			}
 			
 			// Default to native Backbone.Model get operation:
-			return modelSuper(this, 'get', arguments);
+			return Epoxy.utils.model.modelSuper(this, 'get', arguments);
 		},
 		
 		// Backbone.Model.set() override:
@@ -126,13 +136,13 @@
 			}
 			
 			// Pass all resulting set params along to the underlying Backbone Model.
-			return modelSuper(this, 'set', [params, options]);
+			return Epoxy.utils.model.modelSuper(this, 'set', [params, options]);
 		},
 		
 		// Backbone.Model.toJSON() override:
 		// adds a 'computed' option, specifying to include computed attributes.
 		toJSON: function(options) {
-			var json = modelSuper(this, 'toJSON', arguments);
+			var json = Epoxy.utils.model.modelSuper(this, 'toJSON', arguments);
 
 			if (options && options.computed) {
 				_.each(this.c(), function(computed, attribute) {
@@ -147,7 +157,7 @@
 		// clears all computed attributes before destroying.
 		destroy: function() {
 			this.clearComputeds();
-			return modelSuper(this, 'destroy', arguments);
+			return Epoxy.utils.model.modelSuper(this, 'destroy', arguments);
 		},
 		
 		// Computed namespace manager:
@@ -379,9 +389,9 @@
 			// All Epoxy.Model attributes accessed while getting the initial value
 			// will automatically register themselves within the model bindings map.
 			var bindings = {};
-			var deps = modelMap = [];
+			var deps = Epoxy.utils.model.modelMap = [];
 			this.get(true);
-			modelMap = null;
+			Epoxy.utils.model.modelMap = null;
 			
 			// If the computed has dependencies, then proceed to binding it:
 			if (deps.length) {
@@ -587,8 +597,8 @@
 				// Cache and reset the current dependency graph state:
 				// sub-views may be created (each with their own dependency graph),
 				// therefore we need to suspend the working graph map here before making children...
-				var mapCache = viewMap;
-				viewMap = null;
+				var mapCache = Epoxy.utils.view.viewMap;
+				Epoxy.utils.view.viewMap = null;
 				
 				// Default target to the bound collection object:
 				// during init (or failure), the binding will reset.
@@ -653,7 +663,7 @@
 				}
 				
 				// Restore cached dependency graph configuration:
-				viewMap = mapCache;
+				Epoxy.utils.view.viewMap = mapCache;
 			},
 			clean: function() {
 				for (var id in this.v) {
@@ -937,19 +947,15 @@
 	
 	
 	// Epoxy.View
-	// ----------
-	var viewMap;
-	var viewSuper = superClass(Backbone.View);
-	var viewProps = ['viewModel', 'bindings', 'bindingFilters', 'bindingHandlers', 'bindingSources', 'computeds'];
-	
-	
+	// ----------	
+
 	Epoxy.View = Backbone.View.extend({
 		
 		// Backbone.View constructor override:
 		// sets up binding controls around call to super.
 		constructor: function(options) {
-			_.extend(this, _.pick(options||{}, viewProps));
-			viewSuper(this, 'constructor', arguments);
+			_.extend(this, _.pick(options||{}, Epoxy.utils.view.viewProps));
+			Epoxy.utils.view.viewSuper(this, 'constructor', arguments);
 			this.applyBindings();
 		},
 		
@@ -1081,7 +1087,7 @@
 		// unbinds the view before performing native removal tasks.
 		remove: function() {
 			this.removeBindings();
-			viewSuper(this, 'remove', arguments);
+			Epoxy.utils.view.viewSuper(this, 'remove', arguments);
 		}
 		
 	}, mixins);
@@ -1109,7 +1115,7 @@
 			
 			// Create a read-only accessor for the model instance:
 			context['$'+name] = function() {
-				viewMap && viewMap.push([source, 'change']);
+				Epoxy.utils.view.viewMap && Epoxy.utils.view.viewMap.push([source, 'change']);
 				return source;
 			};
 			
@@ -1129,7 +1135,7 @@
 			
 			// Create a read-only accessor for the collection instance:
 			context['$'+name] = function() {
-				viewMap && viewMap.push([source, 'reset add remove sort update']);
+				Epoxy.utils.view.viewMap && Epoxy.utils.view.viewMap.push([source, 'reset add remove sort update']);
 				return source;
 			};
 		}
@@ -1146,7 +1152,7 @@
 	// @param value: the value to set, or 'undefined' to get the current value.
 	function accessViewDataAttribute(source, attribute, value, options) {
 		// Register the attribute to the bindings map, if enabled:
-		viewMap && viewMap.push([source, 'change:'+attribute]);
+		Epoxy.utils.view.viewMap && Epoxy.utils.view.viewMap.push([source, 'change:'+attribute]);
 
 		// Set attribute value when accessor is invoked with an argument:
 		if (!isUndefined(value)) {
@@ -1267,9 +1273,9 @@
 		// Set default binding, then initialize & map bindings:
 		// each binding handler is invoked to populate its initial value.
 		// While running a handler, all accessed attributes will be added to the handler's dependency map.
-		viewMap = triggers;
+		Epoxy.utils.view.viewMap = triggers;
 		reset();
-		viewMap = null;
+		Epoxy.utils.view.viewMap = null;
 		
 		// Configure READ/GET-able binding. Requires:
 		// => Form element.
